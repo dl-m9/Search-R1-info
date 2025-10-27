@@ -128,7 +128,7 @@ def compute_grpo_outcome_advantage(token_level_rewards: torch.Tensor,
             shape: (bs, response_length)
     """
     response_length = token_level_rewards.shape[-1]
-    non_zero_mask = (token_level_rewards != 0)
+    non_zero_mask = (token_level_rewards != 0) # 创建一个与token_level_rewards形状相同的掩码，掩码为True的地方表示非零奖励
     scores = (token_level_rewards * non_zero_mask).sum(dim=-1)
 
     id2score = defaultdict(list)
@@ -150,7 +150,7 @@ def compute_grpo_outcome_advantage(token_level_rewards: torch.Tensor,
                 raise ValueError(f"no score in prompt index: {idx}")
         for i in range(bsz):
             scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
-        scores = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask
+        scores = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask # 分配到每个token的advantage(广播scores到每个token)
 
     return scores, scores
 

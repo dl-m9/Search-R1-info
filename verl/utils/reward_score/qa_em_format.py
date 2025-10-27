@@ -142,6 +142,7 @@ def extract_information_blocks(text: str) -> list[str]:
     return [match.strip() for match in matches]
 
 
+# 检查检索到的信息有没有 golden answer
 def is_retrieval_correct(text: str, golden_answers: list[str]) -> list[str]:
     seqs = extract_information_blocks(text)
     for seq in seqs:
@@ -174,7 +175,7 @@ def compute_score_em(solution_str, ground_truth, method='strict', structure_form
         print(f"Extracted answer: {answer}")
         print(f"Solution string: {solution_str}")
             
-    if answer is None:
+    if answer is None: # 检索奖励
         if is_valid_format:
             if retrieval_correct:
                 return structure_format_score + retrieval_score # 0.3

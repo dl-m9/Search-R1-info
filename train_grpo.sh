@@ -1,5 +1,7 @@
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export DATA_DIR='data/nq_search'
+export HF_ENDPOINT=https://hf-mirror.com
+
 
 WAND_PROJECT='Search-R1'
 
@@ -27,8 +29,8 @@ export VLLM_ATTENTION_BACKEND=XFORMERS # vllm + qwen2-7b with flash_attn has som
 # max_prompt_length = (config['training']['max_start_length'] + config['training']['max_response_length'] * (config['training']['max_turns'] - 1) + config['training']['max_obs_length'] * config['training']['max_turns'])
 
 PYTHONUNBUFFERED=1 python3 -m verl.trainer.main_ppo \
-    data.train_files=$TRAIN_DATA_DIR/train.parquet \
-    data.val_files=$TEST_DATA_DIR/test.parquet \
+    data.train_files=$DATA_DIR/train.parquet \
+    data.val_files=$DATA_DIR/test.parquet \
     data.train_data_num=null \
     data.val_data_num=null \
     data.train_batch_size=512 \

@@ -729,15 +729,18 @@ class RayPPOTrainer(object):
                             final_gen_batch_output = generation_manager.run_llm_loop(
                                 gen_batch=gen_batch,
                                 initial_input_ids=first_input_ids,
-                            )
+                            ) # 输出是一个DataProto对象，包含了生成结果
 
+                        # 将 final_gen_batch_output 中的所有张量转换为 long 类型
                         # final_gen_batch_output.batch.apply(lambda x: x.long(), inplace=True)
                         for key in final_gen_batch_output.batch.keys():
                             final_gen_batch_output.batch[key] = final_gen_batch_output.batch[key].long()
 
+                        # 解释：此处代码的作用是在不计算梯度的情况下，调用 actor_rollout_wg 的 compute_log_prob 方法来计算生成样本的对数概率（log_prob），
+                        # 然后把得到的 output 信息合并回 final_gen_batch_output（就是把 log_prob 结果添加到 batch 里）。
                         with torch.no_grad():
                             output = self.actor_rollout_wg.compute_log_prob(final_gen_batch_output)
-                            final_gen_batch_output = final_gen_batch_output.union(output)
+                            final_gen_batch_output = final_gen_batch_output.union(output) # 加入集合
 
                         # batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))],
                         #                                         dtype=object)
@@ -763,13 +766,13 @@ class RayPPOTrainer(object):
                         if key != 'old_log_probs':
                             batch.batch[key] = batch.batch[key].long()
 
-                    if self.use_reference_policy:
+                    if self.use_reference_policy: 
                         # compute reference log_prob
                         with _timer('ref', timing_raw):
                             ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
                             batch = batch.union(ref_log_prob)
 
-                    # compute values
+                    # compute values， GRPO中不需要critic
                     if self.use_critic:
                         with _timer('values', timing_raw):
                             values = self.critic_wg.compute_values(batch)
