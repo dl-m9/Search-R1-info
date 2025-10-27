@@ -60,7 +60,7 @@ def subem_check(prediction, golden_answers):
 
 
 def extract_solution(solution_str):
-    """Extract the equation from the solution string."""
+    """Extract the answer from the solution string."""
     # Remove everything before the first "Assistant:"
     # if "Assistant:" in solution_str:
     #     solution_str = solution_str.split("Assistant:", 1)[1]
@@ -73,12 +73,12 @@ def extract_solution(solution_str):
     answer_pattern = r'<answer>(.*?)</answer>'
     match = re.finditer(answer_pattern, solution_str, re.DOTALL)
     matches = list(match)
-    
-    # If there are 0 or exactly 1 matches, return None
-    if len(matches) <= 1:
+
+    # If there are no matches, return None
+    if len(matches) == 0:
         return None
-    
-    # If there are 2 or more matches, return the last one
+
+    # Return the last answer (for consistency with original logic)
     return matches[-1].group(1).strip()
 
 

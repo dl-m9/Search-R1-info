@@ -1,0 +1,115 @@
+# Enhanced PPO trainer configuration with SePer integration
+
+# Data configuration
+data:
+  train_files: null # will be specified in command line
+  val_files: null # will be specified in command line
+  train_data_num: null
+  val_data_num: null
+  train_batch_size: 512
+  val_batch_size: 256
+  max_prompt_length: 4096
+  max_response_length: 500
+  max_start_length: 2048
+  max_obs_length: 500
+  shuffle_train_dataloader: true
+
+# Algorithm configuration
+algorithm:
+  adv_estimator: grpo  # Use GRPO for efficiency
+  no_think_rl: false
+
+# Actor rollout and reference model
+actor_rollout_ref:
+  model:
+    path: null # will be specified in command line
+    enable_gradient_checkpointing: true
+    use_remove_padding: true
+
+  actor:
+    optim:
+      lr: 1e-6
+      lr_warmup_steps_ratio: 0.285
+    use_kl_loss: true
+    kl_loss_coef: 0.001
+    kl_loss_type: low_var_kl
+    ppo_mini_batch_size: 256
+    ppo_micro_batch_size: 64
+    fsdp_config:
+      param_offload: true
+      grad_offload: true
+      optimizer_offload: true
+    state_masking: true
+
+  rollout:
+    name: vllm
+    gpu_memory_utilization: 0.6
+    tensor_model_parallel_size: 1
+    log_prob_micro_batch_size: 128
+    n_agent: 5
+    temperature: 1.0
+
+  ref:
+    log_prob_micro_batch_size: 128
+    fsdp_config:
+      param_offload: true
+
+# Critic model
+critic:
+  optim:
+    lr: 1e-5
+    lr_warmup_steps_ratio: 0.015
+  model:
+    path: null # same as actor model
+    enable_gradient_checkpointing: true
+    use_remove_padding: true
+    fsdp_config:
+      param_offload: true
+      grad_offload: true
+      optimizer_offload: true
+  ppo_micro_batch_size: 8
+
+# KL control
+algorithm:
+  kl_ctrl:
+    kl_coef: 0.001
+
+# Trainer configuration
+trainer:
+  critic_warmup: 0
+  logger: [wandb]
+  val_only: false
+  val_before_train: true
+  default_hdfs_dir: null
+  n_gpus_per_node: 8
+  nnodes: 1
+  save_freq: 100
+  test_freq: 50
+  project_name: "Search-R1-SePer"
+  experiment_name: null # will be specified in command line
+  total_epochs: 15
+  total_training_steps: 1005
+  default_local_dir: null # will be specified in command line
+
+# Search and retrieval configuration
+max_turns: 2
+retriever:
+  url: "http://127.0.0.1:8000/retrieve"
+  topk: 3
+
+# Enhanced reward model with SePer
+reward_model:
+  enable: true
+  format_score: 0.0
+  # SePer specific settings
+  seper_weight: 0.7  # Weight for SePer reward (0-1, higher means more emphasis on SePer)
+  val_seper_weight: 0.0  # Disable SePer for validation for efficiency
+  seper_config:
+    enabled: true
+    model_path: null  # Auto-detect from Search-R1 actor model for consistency
+    num_generations: 5  # Number of generations for SePer calculation
+    temperature: 1.0  # Generation temperature
+    max_new_tokens: 128  # Maximum new tokens for generation
+    max_context_words: 4096  # Maximum context words
+    computation_chunk_size: 8  # Chunk size for entailment computation
+    device: 'cuda'  # Device for SePer models
