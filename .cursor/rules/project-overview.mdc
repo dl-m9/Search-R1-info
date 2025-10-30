@@ -1,0 +1,46 @@
+---
+alwaysApply: true
+---
+# Search-R1 Project Overview
+
+Search-R1 is a reinforcement learning framework for training reasoning-and-searching interleaved Large Language Models (LLMs). Built upon [veRL](mdc:VERL_README.md), it enables LLMs to learn to reason and make tool calls (e.g., search engines) in a coordinated manner.
+
+## Core Architecture
+
+The project consists of two main components:
+
+1. **search_r1/**: Search-R1 specific functionality
+   - `llm_agent/`: LLM generation and agent management utilities
+   - `search/`: Retrieval and search engine implementations (local retrievers, web search APIs)
+
+2. **verl/**: Modified veRL framework for RL training
+   - `trainer/`: PPO/GRPO trainer implementations and configurations
+   - `workers/`: Distributed worker implementations (Actor, Critic, Rollout, RewardModel)
+   - `models/`: LLM model wrappers with FSDP and Megatron support
+   - `utils/`: Utility functions for datasets, rewards, tracking, etc.
+
+## Key Concepts
+
+- **DataProto**: Core data structure used throughout the training pipeline. See [verl/protocol.py](mdc:verl/protocol.py)
+- **Role-based Workers**: Different worker types (Actor, Critic, Rollout, RefPolicy, RewardModel) handle different parts of the RL pipeline
+- **Resource Pool Management**: Ray-based resource allocation for distributed training
+- **Multi-turn Search**: LLMs learn to interleave reasoning (`<reasoning>`) with search queries (`<search>`) and use retrieved information (`<information>`)
+
+## Training Flow
+
+1. Load data → Generate responses with search → Compute rewards → Update policy (PPO/GRPO)
+2. The main training entry point is [verl/trainer/main_ppo.py](mdc:verl/trainer/main_ppo.py)
+3. Training configuration uses Hydra and YAML files in `verl/trainer/config/`
+
+## Important Files
+
+- **Main Training**: [verl/trainer/main_ppo.py](mdc:verl/trainer/main_ppo.py)
+- **PPO Trainer**: [verl/trainer/ppo/ray_trainer.py](mdc:verl/trainer/ppo/ray_trainer.py)
+- **LLM Agent**: [search_r1/llm_agent/generation.py](mdc:search_r1/llm_agent/generation.py)
+- **Retrieval Server**: [search_r1/search/retrieval_server.py](mdc:search_r1/search/retrieval_server.py)
+
+## Documentation
+
+- Main README: [README.md](mdc:README.md)
+- Architecture guide: [CLAUDE.md](mdc:CLAUDE.md)
+- SEPER integration: [SEPER_INTEGRATION.md](mdc:SEPER_INTEGRATION.md)

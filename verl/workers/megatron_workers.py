@@ -17,6 +17,7 @@ The main entry point to run the PPO algorithm
 
 import os
 import logging
+import numpy as np
 import ray
 import torch
 import torch.distributed
@@ -28,7 +29,7 @@ from verl.workers.critic.megatron_critic import MegatronPPOCritic
 from verl.workers.sharding_manager import AllGatherPPModel
 from verl.workers.reward_model.megatron.reward_model import MegatronRewardModel
 
-from verl.single_controller.base.decorator import register, Dispatch
+from verl.single_controller.base.decorator import register, Dispatch, Execute
 from verl import DataProto
 from verl.utils.fs import copy_local_path_from_hdfs
 from verl.utils.debug import log_gpu_memory_usage

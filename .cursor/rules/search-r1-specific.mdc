@@ -1,0 +1,78 @@
+---
+globs: search_r1/**/*.py
+---
+# Search-R1 Specific Guidelines
+
+## Search Engine Integration
+
+Search-R1 integrates search engines into the RL training pipeline. The LLM learns to call search engines using XML-like tags:
+
+- `<reasoning>...</reasoning>`: Internal reasoning steps
+- `<search>query</search>`: Search query that triggers retrieval
+- `<information>...</information>`: Retrieved documents from search
+- `<answer>...</answer>`: Final answer
+
+## Core Components
+
+### LLMGenerationManager
+
+[search_r1/llm_agent/generation.py](mdc:search_r1/llm_agent/generation.py) manages multi-turn generation with search:
+
+- Handles the generation loop: generate → parse search tags → call retrieval API → continue generation
+- Manages tensor operations and attention masks
+- Tracks turn statistics and timing
+- Supports maximum turns and token limits
+
+### Retrieval Server
+
+[search_r1/search/retrieval_server.py](mdc:search_r1/search/retrieval_server.py) provides HTTP API for retrieval:
+
+- Endpoint: `http://127.0.0.1:8000/retrieve`
+- Supports multiple retriever types: BM25, dense retrieval (e5), web search APIs
+- Returns top-k documents with scores
+- Should be launched separately before training
+
+### Retrieval Types
+
+Supported retrieval methods:
+- **Local sparse**: BM25 via pyserini
+- **Local dense**: Flat indexing or ANN indexing (faiss)
+- **Online search**: Google, Bing, SERP API
+
+## Search Query Parsing
+
+The LLM generates search queries in `<search>query</search>` format. The system:
+1. Parses XML tags from generated text
+2. Extracts search queries
+3. Calls retrieval API
+4. Injects retrieved documents back into the context as `<information>...</information>`
+
+## Reward Computation
+
+Search-aware rewards are computed in `RewardManager`:
+- Rule-based rewards based on answer correctness (EM score)
+- Can integrate SEPER (semantic entropy) for uncertainty-based rewards
+- Format scores for properly formatted responses
+
+## Configuration
+
+Key configuration parameters for search:
+- `do_search`: Enable multi-turn search mode
+- `max_turns`: Maximum number of search turns
+- `retriever.url`: Retrieval server URL
+- `retriever.topk`: Number of documents to retrieve
+- `no_think_rl`: Whether to exclude reasoning tokens from RL updates
+
+## Best Practices
+
+1. **Launch Retrieval Server First**: Always start the retrieval server before training
+2. **Parse Search Tags**: Use robust XML parsing for search tags (handle malformed tags)
+3. **Token Limits**: Respect `max_prompt_length`, `max_response_length`, and `max_obs_length`
+4. **State Masking**: Use `state_masking` to focus RL updates on specific tokens (e.g., search queries)
+5. **Turn Statistics**: Track number of searches, valid actions, etc. for monitoring
+
+## Integration Points
+
+- Training loop: [verl/trainer/ppo/ray_trainer.py](mdc:verl/trainer/ppo/ray_trainer.py) calls `LLMGenerationManager.run_llm_loop()`
+- Reward function: [verl/trainer/main_ppo.py](mdc:verl/trainer/main_ppo.py) computes rewards on final responses
+- Data processing: Search-specific data format in `scripts/data_process/nq_search.py`

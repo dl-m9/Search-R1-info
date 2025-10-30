@@ -1,0 +1,117 @@
+---
+globs: verl/workers/**/*.py,verl/single_controller/**/*.py
+---
+# Distributed Training Guidelines
+
+## Architecture Overview
+
+Search-R1 uses Ray for distributed training with a single-controller architecture:
+- **Driver Process**: Coordinates training, runs on single CPU/GPU node
+- **Worker Processes**: Execute model operations (Actor, Critic, Rollout, etc.)
+- **Resource Pools**: Manage GPU allocation across nodes
+
+## Worker Types
+
+### Role Enum
+
+Defined in [verl/trainer/ppo/ray_trainer.py](mdc:verl/trainer/ppo/ray_trainer.py):
+- `Role.ActorRollout`: Combined actor and rollout worker (most common)
+- `Role.Critic`: Value function worker (for GAE advantage estimation)
+- `Role.RefPolicy`: Reference policy for KL penalty computation
+- `Role.RewardModel`: Model-based reward computation
+
+### Worker Implementations
+
+- **FSDP Workers**: [verl/workers/fsdp_workers.py](mdc:verl/workers/fsdp_workers.py) - PyTorch FSDP backend
+- **Megatron Workers**: [verl/workers/megatron_workers.py](mdc:verl/workers/megatron_workers.py) - Megatron-LM backend
+
+## Resource Pool Management
+
+### ResourcePoolManager
+
+Manages GPU allocation:
+- `resource_pool_spec`: Defines pools and GPU counts per node
+- `mapping`: Maps roles to resource pools
+- Creates `RayResourcePool` instances that manage GPU allocation
+
+### Worker Group Creation
+
+```python
+# Create resource pools
+resource_pool_manager.create_resource_pool()
+
+# Create worker classes
+actor_rollout_cls = RayClassWithInitArgs(
+    cls=role_worker_mapping[Role.ActorRollout],
+    config=config.actor_rollout_ref,
+    role='actor_rollout'
+)
+
+# Initialize worker groups
+wg_dict = ray_worker_group_cls(
+    resource_pool=resource_pool,
+    ray_cls_with_init=worker_dict_cls
+)
+spawn_wg = wg_dict.spawn(prefix_set=class_dict.keys())
+```
+
+## Communication Patterns
+
+### RPC Calls
+
+Driver communicates with workers via RPC:
+- `actor_rollout_wg.generate_sequences()`: Generate responses
+- `actor_rollout_wg.compute_log_prob()`: Compute log probabilities
+- `critic_wg.compute_values()`: Compute value estimates
+- `ref_policy_wg.compute_ref_log_prob()`: Compute reference log probs
+
+### Data Flow
+
+1. Driver prepares batch data
+2. Pads to `dp_size` (data parallelism size)
+3. Dispatches to workers via Ray
+4. Workers process on their allocated GPUs
+5. Results returned to driver
+6. Driver unpads and continues processing
+
+## Batch Dispatching
+
+- Data is automatically partitioned across data parallel ranks
+- Use `pad_dataproto_to_divisor()` before dispatching
+- Use `unpad_dataproto()` after receiving results
+- Sequence length balancing via `_balance_batch()` for efficiency
+
+## Worker Initialization
+
+Workers are initialized in this order:
+1. Critic (if using GAE)
+2. Reference Policy (if using KL penalty)
+3. Reward Model (if enabled)
+4. Actor-Rollout (last, to optimize KV cache memory)
+
+## Backend Support
+
+### FSDP Backend
+- Uses PyTorch FSDP for model sharding
+- Single worker group per resource pool (`max_colocate_count=1`)
+- Suitable for smaller models or single-node training
+
+### Megatron Backend
+- Uses Megatron-LM for tensor/pipeline parallelism
+- Supports multiple worker groups (`max_colocate_count>1`)
+- Suitable for large models (30B+) and multi-node training
+
+## Best Practices
+
+1. **Resource Allocation**: Ensure GPU counts match across nodes for balanced loading
+2. **Sequence Length Balancing**: Use `_balance_batch()` to distribute workload evenly
+3. **Memory Management**: Initialize rollout workers last for better KV cache estimation
+4. **Ray Initialization**: Initialize Ray with proper environment variables (`TOKENIZERS_PARALLELISM`, `NCCL_DEBUG`)
+5. **Error Handling**: Workers should handle distributed errors gracefully
+
+## Debugging
+
+- Check worker logs in Ray dashboard
+- Monitor GPU utilization across nodes
+- Use `timing_raw` metrics to identify bottlenecks
+- Check sequence length distribution for load balancing issues

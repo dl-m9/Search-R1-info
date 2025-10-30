@@ -1,0 +1,119 @@
+---
+globs: *.yaml,*.yml,verl/trainer/config/**
+---
+# Configuration File Guidelines
+
+## Configuration System
+
+Search-R1 uses Hydra for configuration management:
+- Config files are in `verl/trainer/config/`
+- Main config: `ppo_trainer.yaml` or `ppo_trainer_seper.yaml`
+- Use `@hydra.main()` decorator for entry points
+
+## Configuration Structure
+
+### Trainer Configuration
+
+```yaml
+trainer:
+  n_gpus_per_node: 8
+  nnodes: 1
+  total_epochs: 1
+  total_training_steps: null  # Overrides epoch-based calculation
+  project_name: "search-r1"
+  experiment_name: "ppo-training"
+  logger: "wandb"
+  save_freq: 100
+  test_freq: 50
+  val_before_train: true
+  val_only: false
+  critic_warmup: 0
+```
+
+### Actor/Rollout Configuration
+
+```yaml
+actor_rollout_ref:
+  actor:
+    strategy: "fsdp"  # or "megatron"
+    # ... model and optimizer config
+  rollout:
+    n: 4  # Number of responses per prompt
+    n_agent: 1  # Number of agents for multi-turn
+```
+
+### Data Configuration
+
+```yaml
+data:
+  train_files: ["data/nq_search/train.parquet"]
+  val_files: ["data/nq_search/test.parquet"]
+  prompt_key: "prompt"
+  max_prompt_length: 1024
+  max_response_length: 2048
+  max_start_length: 512
+  max_obs_length: 4096
+  train_batch_size: 128
+  val_batch_size: 32
+```
+
+### Search Configuration
+
+```yaml
+do_search: true
+max_turns: 5
+retriever:
+  url: "http://127.0.0.1:8000/retrieve"
+  topk: 5
+algorithm:
+  no_think_rl: false  # Exclude reasoning tokens from RL
+  state_masking: false  # Mask state tokens in loss
+```
+
+### Algorithm Configuration
+
+```yaml
+algorithm:
+  adv_estimator: "gae"  # or "grpo"
+  gamma: 1.0
+  lam: 1.0
+  kl_ctrl:
+    type: "adaptive"  # or "fixed"
+    kl_coef: 0.1
+    target_kl: 0.1
+    horizon: 10000
+  kl_penalty: "kl"
+```
+
+## Configuration Best Practices
+
+1. **Use OmegaConf**: Access configs via dot notation (`config.trainer.n_gpus_per_node`)
+2. **Resolve Configs**: Always call `OmegaConf.resolve(config)` to evaluate symbol values
+3. **Dynamic Updates**: Use `open_dict()` context manager when modifying configs
+4. **Validation**: Validate config values before training starts
+5. **Version Control**: Keep config files in version control for reproducibility
+
+## Common Config Patterns
+
+### Multi-node Training
+```yaml
+trainer:
+  n_gpus_per_node: 8
+  nnodes: 4  # 4 nodes × 8 GPUs = 32 GPUs total
+```
+
+### GRPO (No Critic)
+```yaml
+algorithm:
+  adv_estimator: "grpo"  # Doesn't require critic worker
+```
+
+### SEPER Integration
+Use `ppo_trainer_seper.yaml` config template for semantic entropy rewards.
+
+## Environment Variables
+
+Some settings are controlled via environment variables:
+- `TOKENIZERS_PARALLELISM`: Set to `'true'` for Ray workers
+- `NCCL_DEBUG`: Set to `'WARN'` for cleaner logs
+- Set in Ray initialization: `ray.init(runtime_env={'env_vars': {...}})`

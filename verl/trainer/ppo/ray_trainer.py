@@ -31,6 +31,7 @@ from collections import defaultdict
 import numpy as np
 from codetiming import Timer
 from omegaconf import OmegaConf, open_dict
+from tqdm import tqdm
 from verl import DataProto
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from verl.single_controller.base import Worker
@@ -275,6 +276,27 @@ def compute_data_metrics(batch, use_critic=True):
     if 'valid_search_stats' in batch.meta_info:
         metrics['env/number_of_valid_search'] = float(np.array(batch.meta_info['valid_search_stats'], dtype=np.int16).mean())
 
+    # Extract reward metrics from batch meta_info if available
+    if 'metrics' in batch.meta_info:
+        reward_metrics = batch.meta_info['metrics']
+        if 'reward/output_score_mean' in reward_metrics:
+            metrics['reward/output_score_mean'] = reward_metrics['reward/output_score_mean']  # EM check only
+        if 'reward/output_score_max' in reward_metrics:
+            metrics['reward/output_score_max'] = reward_metrics['reward/output_score_max']
+        if 'reward/output_score_min' in reward_metrics:
+            metrics['reward/output_score_min'] = reward_metrics['reward/output_score_min']
+        if 'reward/all_score_mean' in reward_metrics:
+            metrics['reward/all_score_mean'] = reward_metrics['reward/all_score_mean']  # Weighted sum
+        if 'reward/all_score_max' in reward_metrics:
+            metrics['reward/all_score_max'] = reward_metrics['reward/all_score_max']
+        if 'reward/all_score_min' in reward_metrics:
+            metrics['reward/all_score_min'] = reward_metrics['reward/all_score_min']
+        if 'reward/info_gain_score_mean' in reward_metrics:
+            metrics['reward/info_gain_score_mean'] = reward_metrics['reward/info_gain_score_mean']
+        if 'reward/info_gain_score_max' in reward_metrics:
+            metrics['reward/info_gain_score_max'] = reward_metrics['reward/info_gain_score_max']
+        if 'reward/info_gain_score_min' in reward_metrics:
+            metrics['reward/info_gain_score_min'] = reward_metrics['reward/info_gain_score_min']
 
     return metrics
 
@@ -692,9 +714,15 @@ class RayPPOTrainer(object):
         )
 
         # start training loop
-        for epoch in range(self.config.trainer.total_epochs):
-            for batch_dict in self.train_dataloader:
-                print(f'epoch {epoch}, step {self.global_steps}')
+        total_batches = len(self.train_dataloader)
+        pbar_epoch = tqdm(range(self.config.trainer.total_epochs), desc="Epochs", position=0, leave=True)
+        
+        for epoch in pbar_epoch:
+            pbar_epoch.set_description(f"Epoch {epoch+1}/{self.config.trainer.total_epochs}")
+            pbar_batch = tqdm(enumerate(self.train_dataloader), total=total_batches, 
+                             desc=f"Step {self.global_steps}", position=1, leave=False)
+            
+            for batch_idx, batch_dict in pbar_batch:
                 metrics = {}
                 timing_raw = {}
 
@@ -842,17 +870,40 @@ class RayPPOTrainer(object):
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
+                
+                # Update progress bar with key metrics
+                postfix_dict = {}
+                if 'reward/all_score_mean' in metrics:
+                    postfix_dict['all_score'] = f"{metrics['reward/all_score_mean']:.4f}"
+                if 'reward/output_score_mean' in metrics:
+                    postfix_dict['output_score'] = f"{metrics['reward/output_score_mean']:.4f}"
+                if 'reward/info_gain_score_mean' in metrics:
+                    postfix_dict['info_gain'] = f"{metrics['reward/info_gain_score_mean']:.4f}"
+                if 'critic/score/mean' in metrics:
+                    postfix_dict['score'] = f"{metrics['critic/score/mean']:.4f}"
+                if 'critic/returns/mean' in metrics:
+                    postfix_dict['returns'] = f"{metrics['critic/returns/mean']:.4f}"
+                if 'actor/pg_loss' in metrics:
+                    postfix_dict['pg_loss'] = f"{metrics['actor/pg_loss']:.4f}"
+                
+                pbar_batch.set_postfix(postfix_dict)
+                pbar_batch.set_description(f"Step {self.global_steps}")
 
                 self.global_steps += 1
 
                 if self.global_steps >= self.total_training_steps:
-
+                    pbar_batch.close()
+                    pbar_epoch.close()
                     # perform validation after training
                     if self.val_reward_fn is not None:
                         val_metrics = self._validate()
                         pprint(f'Final validation metrics: {val_metrics}')
                         logger.log(data=val_metrics, step=self.global_steps)
                     return
+            
+            pbar_batch.close()
+        
+        pbar_epoch.close()
     
     def _create_loss_mask(self, batch, metrics):
         """Create loss mask for state tokens."""

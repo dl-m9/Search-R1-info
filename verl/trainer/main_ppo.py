@@ -18,6 +18,7 @@ Note that we don't combine the main with ray_trainer as ray_trainer is used by o
 from verl import DataProto
 import torch
 from verl.utils.reward_score import qa_em
+from verl.utils.reward_score.qa_em import get_last_reward_metrics
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 import re
 import numpy as np
@@ -47,9 +48,22 @@ class RewardManager():
 
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
 
-        # all_scores = []
+        # Collect detailed reward metrics
+        info_gain_scores = []
+        output_scores = []  # EM check scores only
+        all_scores = []  # Weighted sums
 
         already_print_data_sources = {}
+        
+        # Check if this is validation mode and set thread-local flag
+        from verl.utils.reward_score import qa_em
+        is_validation = data.meta_info.get('validate', False)
+        if is_validation:
+            qa_em._validation_flag.skip_info_gain = True
+        else:
+            # Reset flag if not validation
+            if hasattr(qa_em._validation_flag, 'skip_info_gain'):
+                qa_em._validation_flag.skip_info_gain = False
 
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
@@ -78,7 +92,17 @@ class RewardManager():
             score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, format_score=self.format_score)
 
             reward_tensor[i, valid_response_length - 1] = score
-            # all_scores.append(score)
+
+            # Collect detailed metrics for compute_score_em
+            if compute_score_fn.__name__ == 'compute_score_em':
+                metrics = get_last_reward_metrics()
+                info_gain_scores.append(metrics['info_gain_score'])
+                output_scores.append(metrics['output_score'])  # EM check only
+                all_scores.append(metrics['all_score'])  # Weighted sum
+            else:
+                output_scores.append(score)
+                all_scores.append(score)
+                info_gain_scores.append(0.0)
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
@@ -87,12 +111,21 @@ class RewardManager():
                 already_print_data_sources[data_source] += 1
                 print(sequences_str)
         
-        # print(f"[DEBUG] all_scores: {all_scores}")
-        # print(f"[DEBUG] all_scores shape: {np.array(all_scores).shape}")
-        # print(f"[DEBUG] all_scores mean: {np.mean(all_scores)}")
-        # print(f"[DEBUG] all_scores max: {np.max(all_scores)}")
-        # print(f"[DEBUG] all_scores min: {np.min(all_scores)}")
-        # print(f"[DEBUG] all_scores std: {np.std(all_scores)}")
+        # Store metrics in batch meta_info
+        if len(output_scores) > 0:
+            if 'metrics' not in data.meta_info:
+                data.meta_info['metrics'] = {}
+            data.meta_info['metrics'].update({
+                'reward/output_score_mean': float(np.mean(output_scores)),  # EM check only
+                'reward/output_score_max': float(np.max(output_scores)),
+                'reward/output_score_min': float(np.min(output_scores)),
+                'reward/all_score_mean': float(np.mean(all_scores)),  # Weighted sum
+                'reward/all_score_max': float(np.max(all_scores)),
+                'reward/all_score_min': float(np.min(all_scores)),
+                'reward/info_gain_score_mean': float(np.mean(info_gain_scores)),
+                'reward/info_gain_score_max': float(np.max(info_gain_scores)),
+                'reward/info_gain_score_min': float(np.min(info_gain_scores)),
+            })
 
         return reward_tensor
 

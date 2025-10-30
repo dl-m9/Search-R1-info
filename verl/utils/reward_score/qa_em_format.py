@@ -162,7 +162,7 @@ def compute_score_em(solution_str, ground_truth, method='strict', structure_form
         format_score: the score for the format
         score: the score for the correct answer
     """
-    is_valid_format, _ = is_valid_sequence(solution_str)
+    is_valid_format, _ = is_valid_sequence(solution_str) # format reward 
     retrieval_correct = False
     if is_valid_format:
         retrieval_correct = is_retrieval_correct(solution_str, ground_truth['target'])

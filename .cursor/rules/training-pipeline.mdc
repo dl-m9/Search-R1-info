@@ -1,0 +1,82 @@
+---
+globs: verl/trainer/**/*.py
+---
+# RL Training Pipeline Guidelines
+
+## Training Entry Points
+
+- **PPO Training**: [verl/trainer/main_ppo.py](mdc:verl/trainer/main_ppo.py) - Main entry point for PPO training
+- **Training Logic**: [verl/trainer/ppo/ray_trainer.py](mdc:verl/trainer/ppo/ray_trainer.py) - Core PPO trainer implementation
+
+## Training Loop Structure
+
+The training loop follows this pattern:
+
+1. **Data Loading**: Load batches from `DataLoader` using `RLHFDataset`
+2. **Generation**: Generate responses using `actor_rollout_wg.generate_sequences()` or `LLMGenerationManager` for multi-turn search
+3. **Reward Computation**: Compute rewards using `RewardManager` or reward model workers
+4. **Advantage Estimation**: Compute advantages (GAE or GRPO)
+5. **Critic Update**: Update value function if using GAE
+6. **Actor Update**: Update policy using PPO/GRPO
+
+## Key Components
+
+### RewardManager
+
+Located in [verl/trainer/main_ppo.py](mdc:verl/trainer/main_ppo.py), handles:
+- Rule-based reward computation
+- Format scoring
+- Integration with entailment models (SEPER)
+- Distributed model access via `actor_rollout_wg`
+
+### RayPPOTrainer
+
+Core trainer class in [verl/trainer/ppo/ray_trainer.py](mdc:verl/trainer/ppo/ray_trainer.py):
+- Manages worker groups (Actor, Critic, RefPolicy, RewardModel)
+- Handles resource pool allocation
+- Implements training loop with timing metrics
+- Supports both GAE and GRPO advantage estimation
+
+### LLMGenerationManager
+
+For multi-turn search scenarios, use `LLMGenerationManager` from `search_r1.llm_agent.generation`:
+- Manages multi-turn generation loops
+- Handles search API calls
+- Integrates reasoning and search interleaving
+
+## Important Patterns
+
+### Worker Initialization
+
+Workers are initialized via `ResourcePoolManager` and `RayWorkerGroup`:
+- Different worker types map to different roles
+- Workers can use FSDP or Megatron backends
+- Worker groups are created after resource pools
+
+### Batch Processing
+
+- Always pad to be divisible by `dp_size` (data parallelism size)
+- Use `pad_dataproto_to_divisor()` and `unpad_dataproto()` for padding
+- Balance batches using `_balance_batch()` for sequence length balancing
+
+### Metrics Collection
+
+- Collect timing metrics using `_timer()` context manager
+- Use `compute_data_metrics()` for data statistics
+- Use `compute_timing_metrics()` for performance metrics
+- Log metrics via `logger.log()` (typically wandb)
+
+## Configuration
+
+Training configs are in `verl/trainer/config/`:
+- `ppo_trainer.yaml`: Main PPO configuration
+- `ppo_trainer_seper.yaml`: PPO with SEPER integration
+- Use Hydra for configuration management
+
+## Best Practices
+
+1. **Validation**: Always run validation before training starts (if `val_before_train=True`)
+2. **Checkpointing**: Save checkpoints at regular intervals (`save_freq`)
+3. **Sequence Length**: Be mindful of `max_prompt_length`, `max_response_length`, and `max_obs_length`
+4. **Multi-turn Search**: Set `do_search=True` for search-enabled training
+5. **Reference Policy**: Use reference policy for KL penalty computation

@@ -1,0 +1,58 @@
+---
+globs: *.py
+---
+# Python Code Conventions
+
+## General Guidelines
+
+- Follow PEP 8 style guidelines
+- Use type hints where appropriate, especially for function signatures
+- Import statements should be grouped: standard library, third-party, local imports
+- Use descriptive variable names that reflect their purpose in the RL/ML context
+
+## Code Structure
+
+- **Copyright Headers**: All files should include the Bytedance copyright header at the top
+- **Docstrings**: Use triple-quoted strings for module and class docstrings
+- **Error Handling**: Use specific exception types rather than bare `except:` clauses
+
+## Data Handling
+
+- **DataProto**: Always use `DataProto` from `verl.protocol` for batch data handling
+  - Access batch data via `data.batch['key']` for tensors
+  - Access non-tensor data via `data.non_tensor_batch['key']`
+  - Use `data.union()` to merge DataProto objects
+  - Use `data.reorder()` for reordering batches
+
+- **Tensor Operations**: 
+  - Always check tensor shapes and dtypes before operations
+  - Use `attention_mask` to identify valid tokens
+  - Be careful with padding and sequence lengths
+
+## Distributed Training Patterns
+
+- **Ray Usage**: Use `@ray.remote` decorator for distributed functions
+- **Worker Groups**: Access distributed models via worker groups (e.g., `actor_rollout_wg`)
+- **Resource Pools**: Use `ResourcePoolManager` for GPU allocation
+
+## Configuration
+
+- Use `OmegaConf` for configuration management
+- Access config values via dot notation: `config.trainer.n_gpus_per_node`
+- Use `open_dict()` context manager when modifying configs dynamically
+
+## Example Patterns
+
+```python
+from verl import DataProto
+from omegaconf import OmegaConf
+
+# DataProto usage
+batch: DataProto = DataProto.from_single_dict(batch_dict)
+responses = batch.batch['responses']
+attention_mask = batch.batch['attention_mask']
+
+# Config usage
+OmegaConf.resolve(config)
+total_steps = config.trainer.total_training_steps
+```
