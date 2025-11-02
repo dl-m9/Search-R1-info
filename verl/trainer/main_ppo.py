@@ -58,20 +58,30 @@ class RewardManager():
         # Check if this is validation mode and set thread-local flag
         from verl.utils.reward_score import qa_em
         is_validation = data.meta_info.get('validate', False)
+        
+        # Debug: print meta_info to see what's being passed
+        print(f"[DEBUG] data.meta_info keys: {list(data.meta_info.keys())}")
+        print(f"[DEBUG] data.meta_info.get('validate'): {data.meta_info.get('validate', 'NOT_FOUND')}")
+        print(f"[DEBUG] is_validation: {is_validation}")
+        
         if is_validation:
             qa_em._validation_flag.skip_info_gain = True
+            print(f"[INFO] Validation mode detected: skipping info gain computation")
         else:
             # Reset flag if not validation
             if hasattr(qa_em._validation_flag, 'skip_info_gain'):
                 qa_em._validation_flag.skip_info_gain = False
 
+        # ===== PHASE 1: Collect items for batch info gain computation =====
+        batch_items = []  # Items to send to SEPER service
+        batch_indices = []  # Original indices of items that need info gain computation
+        item_to_data = []  # Store decoded data for each item
+        
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
 
             prompt_ids = data_item.batch['prompts']
-
             prompt_length = prompt_ids.shape[-1]
-
             valid_prompt_length = data_item.batch['attention_mask'][:prompt_length].sum()
             valid_prompt_ids = prompt_ids[-valid_prompt_length:]
 
@@ -84,22 +94,147 @@ class RewardManager():
             sequences_str = self.tokenizer.decode(sequences)
 
             ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
-
-            # select rm_score
             data_source = data_item.non_tensor_batch['data_source']
             compute_score_fn = _select_rm_score_fn(data_source)
 
-            score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, format_score=self.format_score)
+            # Store decoded data for later use
+            item_to_data.append({
+                'sequences_str': sequences_str,
+                'ground_truth': ground_truth,
+                'data_source': data_source,
+                'compute_score_fn': compute_score_fn,
+                'valid_response_length': valid_response_length,
+            })
 
-            reward_tensor[i, valid_response_length - 1] = score
+            # Collect items that need info gain computation
+            if (compute_score_fn.__name__ == 'compute_score_em' and 
+                not is_validation and 
+                qa_em.SEPER_CLIENT_AVAILABLE):
+                result = qa_em.extract_question_information(solution_str=sequences_str)
+                information_blocks = result['information_blocks']
+                question = result['question']
+                
+                # Only add if there are information blocks
+                if len(information_blocks) > 0:
+                    context = "\n".join(information_blocks)
+                    batch_items.append({
+                        'question': question,
+                        'context': context,
+                        'answers': ground_truth['target'],
+                    })
+                    batch_indices.append(i)
 
-            # Collect detailed metrics for compute_score_em
+        # ===== PHASE 2: Batch compute info gain scores =====
+        info_gain_scores_dict = {}  # Map from index to info_gain_score
+        
+        if is_validation:
+            print(f"[INFO] Validation mode: skipping batch info gain computation (only using EM scores)")
+        elif len(batch_items) > 0:
+            # Get SEPER client
+            import os
+            from verl.utils.reward_score.seper_client import get_seper_client, SePerClient
+            service_url = os.getenv('SEPER_SERVICE_URL', 'http://0.0.0.0:0310')
+            # Configure batch size and timeout
+            batch_size = int(os.getenv('SEPER_BATCH_SIZE', '128'))  # Items per batch
+            base_timeout = float(os.getenv('SEPER_TIMEOUT', '60.0'))  # Base timeout in seconds
+            # Calculate timeout: base_timeout per 100 items, with minimum 60s
+            # For a batch of 100 items, use 60s; for 200 items, use 120s, etc.
+            timeout = max(base_timeout, base_timeout * (batch_size / 128.0))
+            
+            # Get or create client with increased timeout for batch processing
+            seper_client = get_seper_client(service_url=service_url)
+            original_timeout = None
+            if seper_client is None:
+                # Create a new client with custom timeout if global client doesn't exist
+                seper_client = SePerClient(service_url=service_url, timeout=timeout)
+            else:
+                # Temporarily increase timeout for the global client
+                original_timeout = seper_client.timeout
+                seper_client.timeout = timeout
+            
+            if seper_client is not None and seper_client.health_check():
+                try:
+                    # Split into smaller batches to avoid timeout
+                    # Process in chunks to prevent single request timeout
+                    chunk_size = batch_size
+                    total_items = len(batch_items)
+                    
+                    print(f"[INFO] Processing {total_items} items in batches of {chunk_size} (timeout={timeout:.1f}s per batch)")
+                    
+                    for chunk_start in range(0, total_items, chunk_size):
+                        chunk_end = min(chunk_start + chunk_size, total_items)
+                        chunk_items = batch_items[chunk_start:chunk_end]
+                        chunk_indices = batch_indices[chunk_start:chunk_end]
+                        
+                        try:
+                            # Batch compute info gain scores for this chunk
+                            import time
+                            start_time = time.time()
+
+                            chunk_scores = seper_client.compute_info_gain_batch(chunk_items)
+
+                            elapsed_time = time.time() - start_time
+                            
+                            # Map scores back to original indices
+                            for idx, score in zip(chunk_indices, chunk_scores):
+                                info_gain_scores_dict[idx] = score
+                                
+                            print(f"[INFO] Processed chunk {chunk_start//chunk_size + 1}/{(total_items-1)//chunk_size + 1}: {len(chunk_items)} items")
+                            print(f"[INFO] Batch compute_info_gain_batch used {elapsed_time:.2f}s for {len(chunk_items)} items")
+                        except Exception as e:
+                            print(f"[WARNING] Batch SEPER service call failed for chunk {chunk_start//chunk_size + 1}: {e}")
+                            # Continue with next chunk instead of failing completely
+                            # Missing scores will fall back to individual computation in phase 3
+                            continue
+                except Exception as e:
+                    print(f"[WARNING] Batch SEPER service call failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fall back to individual computation (will happen in phase 3)
+                    info_gain_scores_dict = {}
+                finally:
+                    # Restore original timeout if we modified the global client
+                    if seper_client is not None and original_timeout is not None:
+                        seper_client.timeout = original_timeout
+
+        # ===== PHASE 3: Compute final scores using pre-computed info gain scores =====
+        for i in range(len(data)):
+            item_data = item_to_data[i]
+            sequences_str = item_data['sequences_str']
+            ground_truth = item_data['ground_truth']
+            data_source = item_data['data_source']
+            compute_score_fn = item_data['compute_score_fn']
+            valid_response_length = item_data['valid_response_length']
+
+            # Get pre-computed info gain score if available
+            # In validation mode, explicitly set to 0.0 to skip info gain computation
+            if is_validation:
+                precomputed_info_gain = 0.0
+            else:
+                precomputed_info_gain = info_gain_scores_dict.get(i, None)
+
+            # Compute score with pre-computed info gain score
             if compute_score_fn.__name__ == 'compute_score_em':
+                score = compute_score_fn(
+                    solution_str=sequences_str, 
+                    ground_truth=ground_truth, 
+                    format_score=self.format_score,
+                    info_gain_score=precomputed_info_gain
+                )
+                reward_tensor[i, valid_response_length - 1] = score
+
+                # Collect detailed metrics
                 metrics = get_last_reward_metrics()
                 info_gain_scores.append(metrics['info_gain_score'])
                 output_scores.append(metrics['output_score'])  # EM check only
                 all_scores.append(metrics['all_score'])  # Weighted sum
             else:
+                score = compute_score_fn(
+                    solution_str=sequences_str, 
+                    ground_truth=ground_truth, 
+                    format_score=self.format_score
+                )
+                reward_tensor[i, valid_response_length - 1] = score
                 output_scores.append(score)
                 all_scores.append(score)
                 info_gain_scores.append(0.0)

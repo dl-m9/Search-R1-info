@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 export DATA_DIR='data/nq_search'
 export HF_ENDPOINT=https://hf-mirror.com
 
@@ -14,10 +14,10 @@ WAND_PROJECT='Search-R1'
 # export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
 # export EXPERIMENT_NAME=nq-search-r1-grpo-llama3.1-8b-it-em
 
-export BASE_MODEL='PeterJinGo/SearchR1-nq_hotpotqa_train-qwen2.5-3b-em-grpo-v0.3'
+export BASE_MODEL='Qwen/Qwen2.5-3B'
 export LOG_DIR='logs'
 mkdir -p $LOG_DIR
-export EXPERIMENT_NAME="$(date +%Y%m%d%H%M%S)-nq-search-r1-grpo-qwen2.5-3b-em"
+export EXPERIMENT_NAME="$(date +%m%d%H%M)-nq-search-r1-grpo-qwen2.5-3b-infogain"
 # export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 # export EXPERIMENT_NAME=nq-search-r1-grpo-qwen2.5-3b-it-em
 # export BASE_MODEL='Qwen/Qwen2.5-7B'
@@ -70,10 +70,10 @@ PYTHONUNBUFFERED=1 nohup python3 -m verl.trainer.main_ppo \
     +trainer.val_only=false \
     +trainer.val_before_train=false \
     trainer.default_hdfs_dir=null \
-    trainer.n_gpus_per_node=8 \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
-    trainer.save_freq=100 \
-    trainer.test_freq=50 \
+    trainer.save_freq=10 \
+    trainer.test_freq=10 \
     trainer.project_name=$WAND_PROJECT \
     trainer.experiment_name=$EXPERIMENT_NAME \
     trainer.total_epochs=15 \

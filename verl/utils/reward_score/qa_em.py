@@ -114,7 +114,7 @@ def extract_solution(solution_str):
     return matches[-1].group(1).strip()
 
 
-def compute_score_em(solution_str, ground_truth, method='strict', format_score=0., score=1.):
+def compute_score_em(solution_str, ground_truth, method='strict', format_score=0., score=1., info_gain_score=None):
     """The scoring function for exact match (EM).
 
     Args:
@@ -123,6 +123,7 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
         method: the method to extract the solution, choices are 'strict' and 'flexible'
         format_score: the score for the format
         score: the score for the correct answer
+        info_gain_score: Optional pre-computed info gain score. If None, will compute it.
     """
     result = extract_question_information(solution_str=solution_str)
     question = result['question']
@@ -149,54 +150,60 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
         info_gain_score_weight = 0.0
     if is_validation:
         info_gain_score_weight = 0.0  # Skip info gain during validation
-    info_gain_score = 0.0
-    debug_print = False
-    if debug_print:
-        print(f"[DEBUG] SEPER_CLIENT_AVAILABLE: {SEPER_CLIENT_AVAILABLE}")
-        print(f"[DEBUG] len(information_blocks): {len(information_blocks)}")
-        print(f"[DEBUG] question: {question}")
-        print(f"[DEBUG] information_blocks: {information_blocks}")
-    # Try SEPER service first if available
-    # Skip info gain computation during validation for efficiency
-    if not is_validation and SEPER_CLIENT_AVAILABLE and len(information_blocks) > 0:
+    
+    # Use pre-computed info_gain_score if provided, otherwise compute it
+    if info_gain_score is None:
+        info_gain_score = 0.0
+        debug_print = False
         if debug_print:
-            print(f"[DEBUG] Attempting to get SEPER client...")
-        # Use environment variable if set, otherwise use default
-        service_url = os.getenv('SEPER_SERVICE_URL', 'http://0.0.0.0:0310')
-        seper_client = get_seper_client(service_url=service_url)
-        if debug_print:
-            print(f"[DEBUG] seper_client: {seper_client}")
-            print(f"[DEBUG] service_url: {service_url}")
-        if seper_client is not None:
+            print(f"[DEBUG] SEPER_CLIENT_AVAILABLE: {SEPER_CLIENT_AVAILABLE}")
+            print(f"[DEBUG] len(information_blocks): {len(information_blocks)}")
+            print(f"[DEBUG] question: {question}")
+            print(f"[DEBUG] information_blocks: {information_blocks}")
+        # Try SEPER service first if available
+        # Skip info gain computation during validation for efficiency
+        if not is_validation and SEPER_CLIENT_AVAILABLE and len(information_blocks) > 0:
             if debug_print:
-                print(f"[DEBUG] Checking service availability...")
-            # Use the client's health_check method directly instead of is_seper_service_available()
-            service_available = seper_client.health_check()
+                print(f"[DEBUG] Attempting to get SEPER client...")
+            # Use environment variable if set, otherwise use default
+            service_url = os.getenv('SEPER_SERVICE_URL', 'http://0.0.0.0:0310')
+            seper_client = get_seper_client(service_url=service_url)
             if debug_print:
-                print(f"[DEBUG] seper_client.health_check(): {service_available}")
-            if service_available:
-                try:
-                    context = "\n".join(information_blocks)
-                    if debug_print:
-                        print(f"[DEBUG] Calling compute_info_gain with question: {question[:50]}..., context length: {len(context)}")
-                        print(f"[DEBUG] ground_truth['target'] type: {type(ground_truth['target'])}, value: {ground_truth['target']}")
-                    info_gain_score = seper_client.compute_info_gain(
-                        question=question,
-                        context=context,
-                        answers=ground_truth['target']  # _normalize_answers will handle all cases
-                    )
-                    if debug_print:
-                        print(f"[DEBUG] compute_info_gain returned: {info_gain_score}")
-                except Exception as e:
-                    print(f"[WARNING] SEPER service call failed, falling back to local computation: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    info_gain_score = 0.0
+                print(f"[DEBUG] seper_client: {seper_client}")
+                print(f"[DEBUG] service_url: {service_url}")
+            if seper_client is not None:
+                if debug_print:
+                    print(f"[DEBUG] Checking service availability...")
+                # Use the client's health_check method directly instead of is_seper_service_available()
+                service_available = seper_client.health_check()
+                if debug_print:
+                    print(f"[DEBUG] seper_client.health_check(): {service_available}")
+                if service_available:
+                    try:
+                        context = "\n".join(information_blocks)
+                        if debug_print:
+                            print(f"[DEBUG] Calling compute_info_gain with question: {question[:50]}..., context length: {len(context)}")
+                            print(f"[DEBUG] ground_truth['target'] type: {type(ground_truth['target'])}, value: {ground_truth['target']}")
+                        info_gain_score = seper_client.compute_info_gain(
+                            question=question,
+                            context=context,
+                            answers=ground_truth['target']  # _normalize_answers will handle all cases
+                        )
+                        if debug_print:
+                            print(f"[DEBUG] compute_info_gain returned: {info_gain_score}")
+                    except Exception as e:
+                        print(f"[WARNING] SEPER service call failed, falling back to local computation: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        info_gain_score = 0.0
+                else:
+                    print(f"[DEBUG] Service health check failed, skipping SEPER computation")
+                    print(f"[DEBUG] Service URL: {seper_client.service_url}")
             else:
-                print(f"[DEBUG] Service health check failed, skipping SEPER computation")
-                print(f"[DEBUG] Service URL: {seper_client.service_url}")
-        else:
-            print(f"[DEBUG] get_seper_client() returned None")
+                print(f"[DEBUG] get_seper_client() returned None")
+    else:
+        # Use pre-computed info_gain_score
+        pass
     
     
 
@@ -298,6 +305,20 @@ def extract_question_information(solution_str):
     # 2) Extract retrieved information blocks
     info_pattern = r"<information>(.*?)</information>"
     information_blocks = [s.strip() for s in re.findall(info_pattern, solution_str, re.DOTALL)]
+    
+    # Filter out prompt-related text: remove "and" that comes from prompt "between <information> and </information>"
+    filtered_blocks = []
+    for block in information_blocks:
+        # Remove leading/trailing "and" that might come from the prompt
+        filtered_block = block.strip()
+        # Skip if the block is just "and" (from prompt text)
+        if filtered_block.lower() == 'and':
+            continue
+        
+        if filtered_block:  # Only add non-empty blocks
+            filtered_blocks.append(filtered_block)
+    
+    information_blocks = filtered_blocks
     retrieved_information = "\n".join(information_blocks) if information_blocks else ""
 
     return {
@@ -308,7 +329,25 @@ def extract_question_information(solution_str):
 
 
 if __name__ == "__main__":
-    solution_str = "Question: What is the capital of France? <information>France is a country in Europe.</information> <information>Paris is the capital of France.</information> <answer>Paris</answer>"
+    solution_str = """Answer the given question. You must conduct reasoning inside <think> and </think> first every time you get new information. After reasoning, if you find you lack some knowledge, you can call a search engine by <search> query </search> and it will return the top searched results between <information> and </information>. You can search as many times as your want. If you find no further external knowledge needed, you can directly provide the answer inside <answer> and </answer>, without detailed illustrations. For example, <answer> Beijing </answer>. Question: what type of monster is zoe from super monsters?
+<|im_end|>
+<|im_start|>assistant
+ <think> To answer this question, I need to determine the type of monster Zoe belongs to in the 'Super Monsters' series. To do that, I need to recall information about Zoe and her role within the context of the Super Monsters universe. </think>
+<search> What type of monster is Zoe from Super Monsters? </search>
+ <information>Doc 1(Title: "Gamera: Super Monster") Gamera: Super Monster When the evil alien Zanon comes to enslave Earth, all hope seems lost. The Earth's resident superheroes, the Spacewomen, are powerless to stop him. They must enlist the help of a young boy who has a special connection with the giant turtle Gamera. The Friend of All Children then battles Gyaos (a huge vampire bat/pterosaur hybrid), Zigra (an alien shark), Viras (an alien squid), Jiger (a female giant prehistoric dinosaur), Guiron (a knife-headed alien monster) and finally Barugon (an enormous lizard whose tongue sprays a freeze-gas that can freeze things solid and whose back spines emit a
+ Doc 2(Title: "Gamera: Super Monster") the uncut Japanese versions on DVD for the first time in North America. These ""Special Edition"" DVDs were released in sequential order, starting with " (1965) on May 18, 2010. Gamera: Super Monster When the evil alien Zanon comes to enslave Earth, all hope seems lost. The Earth's resident superheroes, the Spacewomen, are powerless to stop him. They must enlist the help of a young boy who has a special connection with the giant turtle Gamera. The Friend of All Children then battles Gyaos (a huge vampire bat/pterosaur hybrid), Zigra (an alien shark), Viras (an alien squid), Jiger (a female
+ Doc 3(Title: "Zoé Kézako") Zoé Kézako Zoé Kézako is a French animated television series, adapted from Véronique Saüquère's book series published by Frimousse. The first season was produced by Corinne Kouper at Sparkling; the second season was produced at TeamTO. This second season is currently airing in France on TF1 and Télétoon. The series is also broadcast around the world: in Norway (NRK1), Sweden (SVT), Denmark (DR), Italy (Rai 3), Canada (Radio Canada), Belgium (RTBF and Ketnet), Portugal (RTP), Finland (YLE), Ireland (RTÉ) and in Argentina (Pakapaka). A big round face with two springy pigtails on top, and a gangly mouth with a playful grin which, if turned more serious, almost turns out
+ </information>
+ <think> From the provided information, I could not find detailed information about Zoe's specific type of monster. However, I noticed a series titled 'Super Monsters,' thus I need to assume Zoe comes from this franchise. Upon further recall, I found that she is part of the Lunar league along with Flicka, Rockett and Slacker. </think>
+ <search> What is the Lunar league in the Super Monsters franchise? </search>
+ 
+ <information>Doc 1(Title: "Lunar: The Silver Star") next Dragonmaster, and save the world in the process. ""Lunar: The Silver Star"" was critically and commercially successful, becoming the number one selling Mega-CD title in Japan and the second highest-selling Mega-CD title of all time. As the first game in the ""Lunar"" series, it set the standard for other follow-up titles including the direct sequel " in 1994. Since the game's original release, three enhanced remakes have been produced for various systems: " in 1996, ""Lunar Legend"" in 2002, and " in 2009. ""Lunar: The Silver Star"" is a traditional, top-down role-playing video game featuring two-dimensional characters and environments.
+ Doc 2(Title: "Lunar: Sanposuru Gakuen") Lunar: Sanposuru Gakuen Even though the game was released after "", it is set hundreds of years before it. Several creatures and places from the game also make an appearance. The game was remade two years later for the Sega Saturn as Mahō Gakuen Lunar!. The game has several elements common to role-playing video games, with 2D character sprites and environments. During the game, the player will encounter monsters that are fought randomly within dungeons, and gain experience from winning battles. Magic and additional skills are unlocked through leveling up, as well as allowing the characters to grow stronger. The
+ Doc 3(Title: "Lunar Magic") Lunar Magic Lunar Magic is a level editor created by FuSoYa for ""Super Mario World"". The interface runs on Microsoft Windows and allows people to create custom graphics and edit levels and the world map. According to FuSoYa, he started the development of Lunar Magic for the Super Nintendo Entertainment System game ""Super Mario World"", in February 2000. The first public release was on September 24, 2000. New releases with improvements continued over the years. It was last updated on February 9, 2018 to version 2.53. Reception for ""Lunar Magic"" has been positive. Kotaku praised it, noting it was a</information>
+ 
+ <think> From the Lunar series information provided, Zoe is part of the 'Lunar league,' which consists of Flicka, Rockett and Slacker. Given this context I believe Zoe's type of monster must be from the Super Monsters franchise instead of the Lunar franchise. Therefore, Zoe appears to be a Super Monster as it follows up on previous types of monsters. </think>
+ <answer> Super monster </answer>
+"""
     result = extract_question_information(solution_str)
     question = result['question']
     information_blocks = result['information_blocks']

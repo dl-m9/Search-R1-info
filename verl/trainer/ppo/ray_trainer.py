@@ -509,6 +509,8 @@ class RayPPOTrainer(object):
                 print('validation generation end')
 
                 test_batch = test_batch.union(test_output_gen_batch)
+                # Explicitly set validate flag after union to ensure it's preserved
+                test_batch.meta_info['validate'] = True
 
                 # evaluate using reward_function
                 # for certain reward function (e.g. sandbox), the generation can overlap with reward
@@ -540,6 +542,8 @@ class RayPPOTrainer(object):
                         )
                     
                     test_batch = test_batch.union(final_gen_batch_output)
+                    # Explicitly set validate flag after union to ensure it's preserved
+                    test_batch.meta_info['validate'] = True
                     
                     for key in test_batch.batch.keys():
                         test_batch.batch[key] = test_batch.batch[key].long()
