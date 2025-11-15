@@ -1,9 +1,10 @@
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 export DATA_DIR='data'
 
 unset http_proxy https_proxy
 export HF_ENDPOINT=https://hf-mirror.com
 
+# export http_proxy=http://192.168.32.28:18000 && export https_proxy=http://192.168.32.28:18000
 
 
 WAND_PROJECT='Search-R1'
@@ -17,10 +18,10 @@ WAND_PROJECT='Search-R1'
 # export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
 # export EXPERIMENT_NAME=nq-search-r1-grpo-llama3.1-8b-it-em
 
-export BASE_MODEL='Qwen/Qwen2.5-3B'
+export BASE_MODEL='PeterJinGo/SearchR1-nq_hotpotqa_train-qwen2.5-3b-em-grpo-v0.3'
 export LOG_DIR='logs'
 mkdir -p $LOG_DIR
-export EXPERIMENT_NAME="$(date +%m%d-%H%M)-nq_train-grpo-qwen2.5-3b-infogain0.6"
+export EXPERIMENT_NAME="Test-SearchR1-nq_hotpotqa_train-qwen2.5-3b-em-grpo-v0.3"
 # export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 # export EXPERIMENT_NAME=nq-search-r1-grpo-qwen2.5-3b-it-em
 # export BASE_MODEL='Qwen/Qwen2.5-7B'
@@ -30,12 +31,11 @@ export EXPERIMENT_NAME="$(date +%m%d-%H%M)-nq_train-grpo-qwen2.5-3b-infogain0.6"
 
 # set -x
 export VLLM_ATTENTION_BACKEND=XFORMERS # vllm + qwen2-7b with flash_attn has some issues
-export SEPER_SERVICE_URL="http://0.0.0.0:0310"
-export SEPER_BATCH_SIZE='512'
+
 # max_prompt_length = (config['training']['max_start_length'] + config['training']['max_response_length'] * (config['training']['max_turns'] - 1) + config['training']['max_obs_length'] * config['training']['max_turns'])
 
 PYTHONUNBUFFERED=1 nohup python3 -m verl.trainer.main_ppo \
-    data.train_files=$DATA_DIR/nq_hotpotqa_train/train.parquet \
+    data.train_files=$DATA_DIR/my_train_hotpotqa.parquet \
     data.val_files=$DATA_DIR/my_test.parquet \
     data.train_data_num=null \
     data.val_data_num=null \
@@ -71,13 +71,13 @@ PYTHONUNBUFFERED=1 nohup python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.temperature=1 \
     actor_rollout_ref.actor.state_masking=true \
     trainer.logger=['wandb'] \
-    +trainer.val_only=false \
-    +trainer.val_before_train=false \
+    +trainer.val_only=true \
+    +trainer.val_before_train=true \
     trainer.default_hdfs_dir=null \
-    trainer.n_gpus_per_node=8 \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
-    trainer.save_freq=30 \
-    trainer.test_freq=20 \
+    trainer.save_freq=20 \
+    trainer.test_freq=10 \
     trainer.project_name=$WAND_PROJECT \
     trainer.experiment_name=$EXPERIMENT_NAME \
     trainer.total_epochs=15 \

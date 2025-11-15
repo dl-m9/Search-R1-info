@@ -134,9 +134,11 @@ class RewardManager():
             import os
             from verl.utils.reward_score.seper_client import get_seper_client, SePerClient
             service_url = os.getenv('SEPER_SERVICE_URL', 'http://0.0.0.0:0310')
+            print(f"[INFO] SEPER service URL: {service_url}")
             # Configure batch size and timeout
-            batch_size = int(os.getenv('SEPER_BATCH_SIZE', '128'))  # Items per batch
+            batch_size = int(os.getenv('SEPER_BATCH_SIZE', '256'))  # Items per batch
             base_timeout = float(os.getenv('SEPER_TIMEOUT', '60.0'))  # Base timeout in seconds
+            print(f"[INFO] SEPER batch size: {batch_size}")
             # Calculate timeout: base_timeout per 100 items, with minimum 60s
             # For a batch of 100 items, use 60s; for 200 items, use 120s, etc.
             timeout = max(base_timeout, base_timeout * (batch_size / 128.0))

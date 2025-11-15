@@ -145,7 +145,7 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
     is_validation = getattr(_validation_flag, 'skip_info_gain', False)
     
     # optional: compute information gain if handles are provided and we have retrieval
-    info_gain_score_weight = 1
+    info_gain_score_weight = 0.6
     if len(information_blocks) == 0:
         info_gain_score_weight = 0.0
     if is_validation:
@@ -219,6 +219,7 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
         else:
             output_score = format_score  # Only EM check score
             all_score = info_gain_score_weight * info_gain_score + format_score  # Weighted sum
+    
     print("--------------------------------")
     print("info_gain_score: ", info_gain_score)
     print("output_score: ", output_score)

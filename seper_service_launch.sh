@@ -14,6 +14,7 @@
 # limitations under the License.
 
 # Launch script for SEPER info gain service
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 export HF_ENDPOINT="https://hf-mirror.com"
 set -e
 
@@ -166,4 +167,4 @@ nohup python3 -m seper.service.seper_server \
     --max-context-words "$MAX_CONTEXT_WORDS" \
     --computation-chunk-size "$COMPUTATION_CHUNK_SIZE" \
     --max-concurrent-requests "$MAX_CONCURRENT_REQUESTS" \
-    --num-gpus "$NUM_GPUS" > seper_service.log 2>&1 &
+    --num-gpus "$NUM_GPUS" > seper_service_${PORT}.log 2>&1 &
