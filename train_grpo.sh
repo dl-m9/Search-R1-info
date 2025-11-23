@@ -17,10 +17,10 @@ WAND_PROJECT='Search-R1'
 # export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
 # export EXPERIMENT_NAME=nq-search-r1-grpo-llama3.1-8b-it-em
 
-export BASE_MODEL='Qwen/Qwen2.5-3B'
+export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 export LOG_DIR='logs'
 mkdir -p $LOG_DIR
-export EXPERIMENT_NAME="$(date +%m%d-%H%M)-nq_train-grpo-qwen2.5-3b-infogain0.6"
+export EXPERIMENT_NAME="$(date +%m%d-%H%M)-nq_train-grpo-qwen2.5-3b-it-infogain0.6"
 # export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 # export EXPERIMENT_NAME=nq-search-r1-grpo-qwen2.5-3b-it-em
 # export BASE_MODEL='Qwen/Qwen2.5-7B'
@@ -76,7 +76,7 @@ PYTHONUNBUFFERED=1 nohup python3 -m verl.trainer.main_ppo \
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=30 \
+    trainer.save_freq=100 \
     trainer.test_freq=20 \
     trainer.project_name=$WAND_PROJECT \
     trainer.experiment_name=$EXPERIMENT_NAME \

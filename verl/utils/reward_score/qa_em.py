@@ -143,6 +143,7 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
     
     # Check if we're in validation mode (skip info gain computation during validation)
     is_validation = getattr(_validation_flag, 'skip_info_gain', False)
+    # em_score_weight = 0.0
     
     # optional: compute information gain if handles are provided and we have retrieval
     info_gain_score_weight = 0.6
@@ -150,6 +151,9 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
         info_gain_score_weight = 0.0
     if is_validation:
         info_gain_score_weight = 0.0  # Skip info gain during validation
+        # em_score_weight = 1.0
+    
+
     
     # Use pre-computed info_gain_score if provided, otherwise compute it
     if info_gain_score is None:
@@ -220,10 +224,11 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
             output_score = format_score  # Only EM check score
             all_score = info_gain_score_weight * info_gain_score + format_score  # Weighted sum
     
-    print("--------------------------------")
-    print("info_gain_score: ", info_gain_score)
-    print("output_score: ", output_score)
-    print("all_score: ", all_score)
+    if do_print:
+        print("--------------------------------")
+        print("info_gain_score: ", info_gain_score)
+        print("output_score: ", output_score)
+        print("all_score: ", all_score)
     # Store metrics in thread-local storage
     _reward_metrics.info_gain_score = info_gain_score
     _reward_metrics.output_score = output_score  # Only EM check score
