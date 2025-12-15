@@ -53,7 +53,21 @@ class DataParallelPPOActor(BasePPOActor):
         self.ulysses_sequence_parallel_size = self.config.ulysses_sequence_parallel_size
         self.use_ulysses_sp = self.ulysses_sequence_parallel_size > 1
 
-        self.compute_entropy_from_logits = torch.compile(verl_F.entropy_from_logits, dynamic=True)
+        # Try to use torch.compile, but fallback to original function if it fails
+        # This handles PyTorch 2.4.0 compatibility issues with attrs library
+        try:
+            self.compute_entropy_from_logits = torch.compile(verl_F.entropy_from_logits, dynamic=True)
+        except Exception as e:
+            # Catch any exception during torch.compile initialization
+            # This includes TypeError from attrs/dataclass compatibility issues
+            error_msg = str(e)
+            if "dataclass" in error_msg or "AttrsDescriptor" in error_msg or "must be called with a dataclass" in error_msg:
+                print(f"Warning: torch.compile failed due to PyTorch/attrs compatibility issue, using uncompiled version.")
+                print(f"  Error details: {type(e).__name__}: {error_msg}")
+                self.compute_entropy_from_logits = verl_F.entropy_from_logits
+            else:
+                # Re-raise if it's a different error
+                raise
 
     def _forward_micro_batch(self, micro_batch, temperature) -> Tuple[torch.Tensor, torch.Tensor]:
         """

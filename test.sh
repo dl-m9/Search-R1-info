@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export DATA_DIR='data'
 
 unset http_proxy https_proxy
@@ -18,10 +18,10 @@ WAND_PROJECT='Search-R1'
 # export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
 # export EXPERIMENT_NAME=nq-search-r1-grpo-llama3.1-8b-it-em
 
-export BASE_MODEL='PeterJinGo/SearchR1-nq_hotpotqa_train-qwen2.5-3b-em-grpo-v0.3'
+export BASE_MODEL='yrshi/AutoRefine-Qwen2.5-7B-Base'
 export LOG_DIR='logs'
 mkdir -p $LOG_DIR
-export EXPERIMENT_NAME="Test-SearchR1-nq_hotpotqa_train-qwen2.5-3b-em-grpo-v0.3"
+export EXPERIMENT_NAME="Test-AutoRefine-Qwen2.5-7B-Base"
 # export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 # export EXPERIMENT_NAME=nq-search-r1-grpo-qwen2.5-3b-it-em
 # export BASE_MODEL='Qwen/Qwen2.5-7B'
@@ -59,7 +59,7 @@ PYTHONUNBUFFERED=1 nohup python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.grad_offload=true \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=true \
     actor_rollout_ref.rollout.log_prob_micro_batch_size=128 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.ref.log_prob_micro_batch_size=128 \
@@ -74,7 +74,7 @@ PYTHONUNBUFFERED=1 nohup python3 -m verl.trainer.main_ppo \
     +trainer.val_only=true \
     +trainer.val_before_train=true \
     trainer.default_hdfs_dir=null \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
     trainer.test_freq=10 \

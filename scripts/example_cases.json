@@ -1,0 +1,18 @@
+[
+  {
+    "question": "What US state is the KeyArena located in?",
+    "context": "KeyArena is located in Seattle, Washington. It is a multi-purpose arena.",
+    "answers": ["Washington"]
+  },
+  {
+    "question": "Who is the father-in-law of Queen Hyojeong?",
+    "context": "Queen Hyojeong was married to Crown Prince Hyomyeong. Crown Prince Hyomyeong's father was...",
+    "answers": ["Crown Prince Hyomyeong"]
+  },
+  {
+    "question": "Which film was released earlier, The Devil's Miner or Don't Tell?",
+    "context": "The Devil's Miner was released in 2005. Don't Tell was released in 2006.",
+    "answers": ["The Devil's Miner"]
+  }
+]
+

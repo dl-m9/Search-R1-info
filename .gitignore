@@ -1,3 +1,5 @@
+.cursor
+
 **/*.pt
 **/checkpoints
 **/wget-log

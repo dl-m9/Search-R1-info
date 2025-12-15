@@ -14,25 +14,27 @@
 # limitations under the License.
 
 # Launch script for SEPER info gain service
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+unset http_proxy https_proxy
 export HF_ENDPOINT="https://hf-mirror.com"
+# export http_proxy=http://192.168.32.28:18000 && export https_proxy=http://192.168.32.28:18000
 set -e
 
 # Default values
 HOST="${SEPER_HOST:-0.0.0.0}"
 PORT="${SEPER_PORT:-0310}"
-MODEL_PATH="${SEPER_MODEL_PATH:-PeterJinGo/SearchR1-nq_hotpotqa_train-qwen2.5-3b-em-grpo-v0.3}"
+MODEL_PATH="${SEPER_MODEL_PATH:-Qwen/Qwen2.5-3B-Instruct}"
 DEVICE="${SEPER_DEVICE:-cuda:0}"
 NUM_GENERATIONS="${SEPER_NUM_GENERATIONS:-10}"
 TEMPERATURE="${SEPER_TEMPERATURE:-1.0}"
 MAX_NEW_TOKENS="${SEPER_MAX_NEW_TOKENS:-128}"
 MAX_CONTEXT_WORDS="${SEPER_MAX_CONTEXT_WORDS:-4096}"
-SUB_BATCH_SIZE="${SEPER_SUB_BATCH_SIZE:-10}"
-COMPUTATION_CHUNK_SIZE="${SEPER_COMPUTATION_CHUNK_SIZE:-8}"
+SUB_BATCH_SIZE="${SEPER_SUB_BATCH_SIZE:-64}"
+COMPUTATION_CHUNK_SIZE="${SEPER_COMPUTATION_CHUNK_SIZE:-256}"
 # Recommended: MAX_CONCURRENT_REQUESTS = NUM_GPUS * 5-10
 # For 4 GPUs: 20-40 is reasonable. Higher values may cause OOM or slow response.
 MAX_CONCURRENT_REQUESTS="${SEPER_MAX_CONCURRENT_REQUESTS:-512}"
-NUM_GPUS="${SEPER_NUM_GPUS:-4}"
+NUM_GPUS="${SEPER_NUM_GPUS:-8}"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do

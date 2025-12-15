@@ -749,10 +749,9 @@ class RayPPOTrainer(object):
                         batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                         batch = batch.union(gen_batch_output)
 
-                ####################
-                # Below is aLL about agents - the "LLM + forloop"
-                ####################
-                # with _timer('step', timing_raw):
+                    ####################
+                    # Below is aLL about agents - the "LLM + forloop"
+                    ####################
                     else:
                         first_input_ids = gen_batch.batch['input_ids'][:, -gen_config.max_start_length:].clone().long()
 
@@ -777,7 +776,7 @@ class RayPPOTrainer(object):
                         # batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))],
                         #                                         dtype=object)
                         batch.non_tensor_batch['uid'] = batch.non_tensor_batch['index'].copy()
-                                            
+
                         # repeat to align with repeated responses in rollout
                         batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                         batch = batch.union(final_gen_batch_output)
@@ -832,6 +831,7 @@ class RayPPOTrainer(object):
                         else:
                             batch.batch['token_level_rewards'] = batch.batch['token_level_scores']
 
+                        print(f'compute_advantage: {self.global_steps}')
                         # compute advantages, executed on the driver process
                         batch = compute_advantage(batch,
                                                   adv_estimator=self.config.algorithm.adv_estimator,
@@ -848,13 +848,17 @@ class RayPPOTrainer(object):
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
-                        # update actor
+                        print(f'[LOG] actor_warmup: global_steps={self.global_steps}, start update_actor')
+                        print(f'update_actor: {self.global_steps}')
                         with _timer('update_actor', timing_raw):
                             if self.config.do_search and self.config.actor_rollout_ref.actor.state_masking:
+                                print("[LOG] Applying loss mask for actor update since state_masking and do_search are enabled")
                                 batch, metrics = self._create_loss_mask(batch, metrics)
                             actor_output = self.actor_rollout_wg.update_actor(batch)
+                        print("[LOG] actor update completed, collecting metrics")
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         metrics.update(actor_output_metrics)
+                        print(f"[LOG] actor update finished at global_steps={self.global_steps}, step metrics: {actor_output_metrics}")
 
                     # validate
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and \

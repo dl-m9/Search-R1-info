@@ -47,10 +47,15 @@ class FSDPVLLMShardingManager(BaseShardingManager):
         # Full params
         self.full_params = full_params
         if full_params:
+            # Use offload_to_cpu=True to reduce system memory pressure during state_dict()
+            # This ensures state_dict() results are on CPU, avoiding GPU->CPU transfers
+            cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=False)
             FSDP.set_state_dict_type(self.module,
                                      state_dict_type=StateDictType.FULL_STATE_DICT,
-                                     state_dict_config=FullStateDictConfig())
+                                     state_dict_config=cfg)
         else:
+            # Use SHARDED_STATE_DICT to avoid collecting full model on each rank
+            # This significantly reduces system memory usage for large models
             FSDP.set_state_dict_type(self.module,
                                      state_dict_type=StateDictType.SHARDED_STATE_DICT,
                                      state_dict_config=ShardedStateDictConfig())
@@ -67,14 +72,39 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             self.gen_random_states = None
 
     def __enter__(self):
+        import torch.distributed as dist
+        rank = dist.get_rank() if dist.is_initialized() else 0
+        
         log_gpu_memory_usage('Before state_dict() in sharding manager memory', logger=logger)
-        params = self.module.state_dict()
-        log_gpu_memory_usage('After state_dict() in sharding manager memory', logger=logger)
+        
+        # For large models (14B+), state_dict() can cause system memory OOM
+        # Using SHARDED_STATE_DICT avoids collecting full model on each rank
+        # This is critical when param_offload is enabled (parameters are on CPU)
+        if rank == 0:
+            logger.info('[Rank 0] Calling FSDP.state_dict() - using sharded state_dict to reduce system memory')
+        
+        try:
+            params = self.module.state_dict()
+            log_gpu_memory_usage('After state_dict() in sharding manager memory', logger=logger)
+            if rank == 0:
+                logger.info(f'[Rank 0] Successfully obtained state_dict, parameter count: {len(params)}')
+        except RuntimeError as e:
+            error_msg = str(e).lower()
+            if 'out of memory' in error_msg:
+                logger.error(f'[Rank {rank}] System/CUDA OOM during state_dict(): {e}')
+                logger.error(f'[Rank {rank}] This may be due to insufficient system RAM when collecting sharded parameters')
+            raise
+        
         # Copy, not share memory
         load_format = 'hf' if self.full_params else 'dtensor'
+        if rank == 0:
+            logger.info(f'[Rank 0] Syncing model weights to vLLM with format: {load_format}')
+        
         self.inference_engine.sync_model_weights(params, load_format=load_format)
         log_gpu_memory_usage('After sync model weights in sharding manager', logger=logger)
 
+        # Immediately delete params to free system memory
+        # This is important when params are on CPU (from offload_to_cpu=True)
         del params
         torch.cuda.empty_cache()
         log_gpu_memory_usage('After del state_dict and empty_cache in sharding manager', logger=logger)
